@@ -1,0 +1,7 @@
+Esta aplicacion incluye PdfPig, distribuido bajo licencia Apache 2.0.
+Proyecto: https://github.com/UglyToad/PdfPig
+Licencia: https://www.apache.org/licenses/LICENSE-2.0
+
+Tambien incluye dependencias Microsoft System.Memory, System.Buffers,
+System.Numerics.Vectors, System.ValueTuple, Microsoft.Bcl.HashCode y
+System.Runtime.CompilerServices.Unsafe, conforme a sus licencias NuGet.

@@ -1,0 +1,33 @@
+BUSCADOR VIN AUTOSUR - INSTALADOR PARA WINDOWS
+
+No requiere Python ni conexion a Internet.
+
+INSTALACION
+1. Descomprimi el archivo ZIP completo.
+2. Hace doble clic en "Instalar Buscador VIN.cmd".
+3. Al finalizar, el programa se abrira y quedara un acceso directo en el escritorio.
+
+El instalador crea una version nueva sin sobrescribir el programa anterior,
+por lo que tambien funciona si Windows mantiene bloqueado el ejecutable viejo.
+
+USO
+- Pestaña Vehiculos: escribi parte de una patente, modelo o motor.
+- Pestaña Clientes: escribi parte del nombre, apellido, DNI o CUIL.
+- Los resultados aparecen automaticamente.
+- Hace doble clic sobre cualquier celda para copiar ese dato.
+- Usa la barra inferior para desplazarte hacia los costados.
+- Usa la barra lateral derecha para desplazarte hacia arriba o abajo.
+- Pestaña Turnero: carga el PDF de Agenda, elimina los turnos Nissan,
+  genera el formato anterior y permite verlo o imprimirlo en A4 vertical.
+
+Compatible con computadoras Windows 10 y Windows 11.
+Incluye un icono propio de automovil Renault amarillo.
+ACTUALIZACION DEL TURNERO
+- La impresion muestra el titulo "Turnos de Taller" junto con la fecha del primer turno cargado.
+- Los turnos se acomodan de forma compacta y continua, sin dividir la hoja en cuatro espacios fijos.
+- Las descripciones extensas usan solamente la altura necesaria y continúan en la hoja siguiente cuando corresponde.
+- La tabla del Turnero tiene barras permanentes inferior y lateral para recorrer todas las columnas y filas.
+- Version 1.2.1: la barra de actualizaciones ya no tapa las pestañas.
+- Version 1.2.1: el lector ignora completamente la columna Accion del PDF y separa Cliente, Vehiculo y Servicios sin superponer sus limites.
+- Version 1.2.2: se agrego el boton Exportar PDF para guardar el turnero en formato A4 vertical.
+- Version 1.2.3: la impresion y el PDF aprovechan casi toda la hoja A4 con margenes seguros de aproximadamente 8 mm.

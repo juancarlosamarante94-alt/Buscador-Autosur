@@ -1,0 +1,35 @@
+name: Publicar actualizacion
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar codigo
+        uses: actions/checkout@v4
+
+      - name: Crear paquete sin bases internas
+        shell: bash
+        run: |
+          test ! -f Buscador_VIN_Instalable/clientes.dat
+          test ! -f Buscador_VIN_Instalable/vehiculos.dat
+          VERSION=$(sed -n 's/.*AppVersion="\([0-9.]*\)".*/\1/p' Buscador_VIN_Instalable/BuscadorVIN.cs | head -n 1)
+          test -n "$VERSION"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          zip -r Buscador_Autosur_Actualizacion.zip Buscador_VIN_Instalable
+
+      - name: Crear GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION }}
+          name: Buscador Autosur v${{ env.VERSION }}
+          make_latest: true
+          files: Buscador_Autosur_Actualizacion.zip
+          generate_release_notes: true
