@@ -31,3 +31,4 @@ ACTUALIZACION DEL TURNERO
 - Version 1.2.1: el lector ignora completamente la columna Accion del PDF y separa Cliente, Vehiculo y Servicios sin superponer sus limites.
 - Version 1.2.2: se agrego el boton Exportar PDF para guardar el turnero en formato A4 vertical.
 - Version 1.2.3: la impresion y el PDF aprovechan casi toda la hoja A4 con margenes seguros de aproximadamente 8 mm.
+- Version 1.2.4: se corrigio la integridad de las bibliotecas del lector PDF incluidas en las actualizaciones de GitHub.

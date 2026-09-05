@@ -20,6 +20,10 @@ jobs:
         run: |
           test ! -f Buscador_VIN_Instalable/clientes.dat
           test ! -f Buscador_VIN_Instalable/vehiculos.dat
+          cat binary-parts/UglyToad.PdfPig.Fonts.dll.* > Buscador_VIN_Instalable/lib/UglyToad.PdfPig.Fonts.dll
+          cat binary-parts/UglyToad.PdfPig.dll.* > Buscador_VIN_Instalable/lib/UglyToad.PdfPig.dll
+          test "$(git hash-object Buscador_VIN_Instalable/lib/UglyToad.PdfPig.Fonts.dll)" = "2e1b9817fdef5820a9c5e59d09ee8ec0cc2c079d"
+          test "$(git hash-object Buscador_VIN_Instalable/lib/UglyToad.PdfPig.dll)" = "3c6a850a2bab06cc534ea7ba168b59b895243254"
           VERSION=$(sed -n 's/.*AppVersion="\([0-9.]*\)".*/\1/p' Buscador_VIN_Instalable/BuscadorVIN.cs | head -n 1)
           test -n "$VERSION"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
