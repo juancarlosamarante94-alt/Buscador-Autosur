@@ -1,7 +1,7 @@
 using System; using System.Collections.Generic; using System.Diagnostics; using System.Drawing; using System.IO; using System.Net; using System.Text; using System.Text.RegularExpressions; using System.Windows.Forms;
 namespace AutosurBuscador {
 static class UpdateManager {
- public const string AppVersion="1.2.4";
+ public const string AppVersion="1.2.5";
  const string ApiUrl="https://api.github.com/repos/juancarlosamarante94-alt/Buscador-Autosur/releases/latest";
  const string ReleasesUrl="https://github.com/juancarlosamarante94-alt/Buscador-Autosur/releases";
  static string Q(string value){return "'"+value.Replace("'","''")+"'";}

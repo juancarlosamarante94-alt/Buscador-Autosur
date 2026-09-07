@@ -32,3 +32,7 @@ ACTUALIZACION DEL TURNERO
 - Version 1.2.2: se agrego el boton Exportar PDF para guardar el turnero en formato A4 vertical.
 - Version 1.2.3: la impresion y el PDF aprovechan casi toda la hoja A4 con margenes seguros de aproximadamente 8 mm.
 - Version 1.2.4: se corrigio la integridad de las bibliotecas del lector PDF incluidas en las actualizaciones de GitHub.
+- Version 1.2.5: las actualizaciones reemplazan la instalacion existente, conservan el mismo acceso directo e icono y guardan un respaldo anterior.
+- Version 1.2.5: el Turnero compara el chasis con la base de vehiculos y agrega los tres primeros caracteres del motor; si no encuentra el chasis, queda vacio.
+- Version 1.2.5: el lector reconoce agendas guardadas desde Chrome y Edge, excluye la columna Accion y exporta en A4 vertical.
+- Version 1.2.5: se corrigio el cierre inesperado que podia ocurrir despues de exportar un PDF.
