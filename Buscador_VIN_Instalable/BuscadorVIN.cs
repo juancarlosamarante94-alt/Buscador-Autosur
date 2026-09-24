@@ -1,7 +1,7 @@
 using System; using System.Collections.Generic; using System.Diagnostics; using System.Drawing; using System.IO; using System.Net; using System.Text; using System.Text.RegularExpressions; using System.Windows.Forms;
 namespace AutosurBuscador {
 static class UpdateManager {
- public const string AppVersion="1.2.5";
+ public const string AppVersion="1.2.6";
  const string ApiUrl="https://api.github.com/repos/juancarlosamarante94-alt/Buscador-Autosur/releases/latest";
  const string ReleasesUrl="https://github.com/juancarlosamarante94-alt/Buscador-Autosur/releases";
  static string Q(string value){return "'"+value.Replace("'","''")+"'";}
@@ -24,7 +24,7 @@ class Vehicle {public string[] V;public string P,M,E;}
 class VehiclePage:UserControl {
  List<Vehicle>d=new List<Vehicle>();DataGridView g;GridHost host;TextBox q;Label s=new Label();Timer t=new Timer();
  public VehiclePage(){Dock=DockStyle.Fill;Padding=new Padding(14);BackColor=Color.FromArgb(243,245,247);var p=new Panel{Dock=DockStyle.Fill};Controls.Add(p);p.Controls.Add(new Label{Text="Usa las barras inferior y lateral para desplazarte. Doble clic copia cualquier dato.",Dock=DockStyle.Bottom,Height=28,ForeColor=Color.DimGray});string[] n={"Patente","Modelo","Motor","VIN","Descripcion","Color","Serie"};int[]w={110,140,200,200,430,150,120};g=Tools.Grid(n,w);g.CellDoubleClick+=delegate(object o,DataGridViewCellEventArgs e){Tools.Copy(g,s,e);};host=new GridHost(g);p.Controls.Add(host);s.Dock=DockStyle.Top;s.Height=29;s.Font=new Font("Segoe UI",9.5f,FontStyle.Bold);p.Controls.Add(s);Button c;q=Tools.Search(p,delegate{t.Stop();t.Start();},out c);c.Click+=delegate{q.Clear();q.Focus();};t.Interval=80;t.Tick+=delegate{t.Stop();Run();};LoadData();}
- void LoadData(){string path=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"vehiculos.dat");if(!File.Exists(path)){s.Text="No se encontro vehiculos.dat";return;}foreach(string line in File.ReadLines(path,Encoding.UTF8)){string[]a=line.Split('\t');if(a.Length!=7)continue;string[]v=new string[7];for(int i=0;i<7;i++)v[i]=Tools.D(a[i]);d.Add(new Vehicle{V=v,P=Tools.N(v[3]),M=Tools.N(v[1]),E=Tools.N(v[6])});}s.Text="Listo. "+d.Count.ToString("N0")+" vehiculos cargados.";}
+ void LoadData(){string path=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"vehiculos.dat");if(!File.Exists(path)){s.Text="No se encontro vehiculos.dat";return;}foreach(string line in File.ReadLines(path,Encoding.UTF8)){string[]a=line.Split('\t');if(a.Length!=7)continue;string[]v=new string[7];for(int i=0;i<7;i++)v[i]=Tools.D(a[i]);d.Add(new Vehicle{V=v,P=Tools.N(v[3]),M=Tools.N(v[1]+" "+v[2]),E=Tools.N(v[6])});}s.Text="Listo. "+d.Count.ToString("N0")+" vehiculos cargados. Busca por patente, nombre o codigo de modelo y motor.";}
  void Run(){string x=Tools.N(q.Text);g.Rows.Clear();if(x.Length==0){s.Text="Escribi una patente, un modelo o un motor para comenzar.";host.UpdateBars();return;}g.SuspendLayout();int c=0;foreach(Vehicle v in d)if(v.P.Contains(x)||v.M.Contains(x)||v.E.Contains(x)){g.Rows.Add(v.V[3],v.V[1],v.V[6],v.V[0],v.V[2],v.V[4],v.V[5]);if(++c==500)break;}g.ResumeLayout();host.UpdateBars();s.Text=c==0?"No se encontraron coincidencias.":c==500?"Se muestran las primeras 500 coincidencias. Escribi un poco mas.":c+" coincidencia(s).";}
 }
 class Client {public string[]V;public string N,D,C;}
