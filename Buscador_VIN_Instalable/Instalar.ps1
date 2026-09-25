@@ -6,6 +6,9 @@ $stage = Join-Path $installRoot ("preparando_" + [Guid]::NewGuid().ToString("N")
 $backup = Join-Path $installRoot "respaldo_anterior"
 $desktop = [Environment]::GetFolderPath("Desktop")
 
+# Evita que PowerShell mantenga bloqueada la carpeta "app" por usarla como ubicacion actual.
+Set-Location ([IO.Path]::GetTempPath())
+
 function Stop-BuscadorAutosur {
     $deadline = (Get-Date).AddSeconds(20)
     do {
