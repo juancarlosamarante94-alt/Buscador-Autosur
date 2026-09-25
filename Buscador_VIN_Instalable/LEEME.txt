@@ -38,3 +38,4 @@ ACTUALIZACION DEL TURNERO
 - Version 1.2.5: se corrigio el cierre inesperado que podia ocurrir despues de exportar un PDF.
 - Version 1.2.6: la busqueda de vehiculos reconoce el nombre comercial dentro de la descripcion, por ejemplo Clio, Kangoo, Sandero o Duster, ademas del codigo de modelo.
 - Version 1.2.7: el actualizador espera el cierre completo de la aplicacion y reintenta el reemplazo si Windows mantiene temporalmente un archivo en uso.
+- Version 1.2.8: el proceso de actualizacion trabaja desde una carpeta temporal para no bloquear la carpeta de instalacion que debe reemplazar.
