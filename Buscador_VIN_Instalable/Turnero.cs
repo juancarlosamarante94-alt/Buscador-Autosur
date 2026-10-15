@@ -83,15 +83,15 @@ public class TurneroPage:UserControl {
   var result=new List<AgendaWord>();
   foreach(var line in page.Letters.GroupBy(l=>Math.Round(l.StartBaseLine.Y,1)).OrderByDescending(g=>g.Key)){
    var text=new StringBuilder();double left=0,right=0,top=0;
-   foreach(var letter in line.OrderBy(l=>l.GlyphRectangle.Left)){
-    string value=letter.Value;double x=letter.GlyphRectangle.Left;
+   foreach(var letter in line.OrderBy(l=>l.StartBaseLine.X)){
+    string value=letter.Value;double x=letter.StartBaseLine.X;
     if(String.IsNullOrWhiteSpace(value)||(text.Length>0&&x-right>Math.Max(1.2,letter.GlyphRectangle.Height*.25))){
      if(text.Length>0){result.Add(new AgendaWord{Text=text.ToString(),X=left,Y=page.Height-top});text.Clear();}
     }
     if(String.IsNullOrWhiteSpace(value))continue;
     if(text.Length==0){left=x;top=letter.GlyphRectangle.Top;}
     else top=Math.Max(top,letter.GlyphRectangle.Top);
-    text.Append(value);right=letter.GlyphRectangle.Right;
+    text.Append(value);right=letter.EndBaseLine.X;
    }
    if(text.Length>0)result.Add(new AgendaWord{Text=text.ToString(),X=left,Y=page.Height-top});
   }
@@ -115,10 +115,10 @@ public class TurneroPage:UserControl {
    try{var glyphRows=ExtractVehicleWords(path,true);if(glyphRows.Count>result.Count)result=glyphRows;}catch{}
   }
   if(result.Count==0){
-   int pages=0,characters=0,brands=0,times=0;
-   using(var doc=PdfDocument.Open(path)){foreach(var page in doc.GetPages()){pages++;characters+=page.Letters.Count;var words=ReadWords(page,true);brands+=words.Count(IsBrand);times+=words.Count(w=>Regex.IsMatch(w.Text,@"^\d{1,2}:\d{2}$"));}}
+   int pages=0,characters=0,brands=0,renaults=0,times=0;
+   using(var doc=PdfDocument.Open(path)){foreach(var page in doc.GetPages()){pages++;characters+=page.Letters.Count;var words=ReadWords(page,true);brands+=words.Count(IsBrand);renaults+=words.Count(w=>Regex.IsMatch(w.Text,@"^RENAULT",RegexOptions.IgnoreCase));times+=words.Count(w=>Regex.IsMatch(w.Text,@"^\d{1,2}:\d{2}$"));}}
    if(characters==0)throw new Exception("El PDF no contiene texto legible. Se necesita la agenda guardada directamente como PDF.");
-   if(brands>0||adaptiveError.Length>0)throw new Exception("No se pudieron separar los turnos de esta agenda. Datos de diagnostico (sin datos personales): paginas="+pages+", caracteres="+characters+", marcas="+brands+", horarios="+times+".");
+   if(renaults>0||(brands==0&&adaptiveError.Length>0))throw new Exception("No se pudieron separar los turnos de esta agenda. Datos de diagnostico (sin datos personales): paginas="+pages+", caracteres="+characters+", marcas="+brands+", horarios="+times+".");
   }
   return result;
  }

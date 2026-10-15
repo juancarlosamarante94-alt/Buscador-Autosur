@@ -85,7 +85,7 @@ static class TurneroPdfFixture {
     if(!rows[i].Servicio.Contains("$35.000")||rows[i].Servicio.Contains("Avisar")||rows[i].Servicio.Contains("Cancelar"))throw new Exception("Servicios o Acción incorrectos en agenda sin encabezados");
    }
    var glyphRows=(List<Appointment>)page.GetType().GetMethod("ExtractVehicleWords",BindingFlags.NonPublic|BindingFlags.Instance).Invoke(page,new object[]{path,true});
-   if(glyphRows.Count!=2||glyphRows[0].Patente!="AA001AA"||glyphRows[0].Telefono!="1111111101")throw new Exception("Falla respaldo de letras individuales");
+   if(glyphRows.Count!=2||glyphRows[0].Patente!="AA001AA"||glyphRows[0].Telefono!="1111111101")throw new Exception("Falla respaldo de letras individuales: "+glyphRows.Count+" filas; "+String.Join(" / ",glyphRows.Select(a=>a.Hora+" "+a.Patente+" "+a.Telefono).ToArray()));
    // Brand and model can arrive as one PDF word.
    string joined=pdf.Replace("(RENAULT KANGOO)","(RENAULTKANGOO)");
    System.IO.File.WriteAllText(path,joined,System.Text.Encoding.ASCII);
@@ -93,6 +93,11 @@ static class TurneroPdfFixture {
    if(rows.Count!=2||!rows[0].Modelo.Contains("KANGOO"))throw new Exception("No lee marca y modelo unidos");
    Console.WriteLine("OK agenda original sin encabezados; hoja ancha y contenido a distintas escalas; Renault, teléfonos, servicio y exclusión Acción");
    Console.WriteLine("OK lectura de respaldo desde letras; reconoce marca y modelo unidos");
+   System.IO.File.WriteAllText(path,pdf.Replace("(RENAULT KANGOO)","(NISSAN FRONTIER)"),System.Text.Encoding.ASCII);
+   rows=(List<Appointment>)page.GetType().GetMethod("Extract",BindingFlags.NonPublic|BindingFlags.Instance).Invoke(page,new object[]{path});
+   if(rows.Count!=0)throw new Exception("Una agenda de Nissan genera Renault");
+   Console.WriteLine("OK agenda sin Renault devuelve cero sin falso error de columnas");
+
   }finally{System.IO.File.Delete(path);}
  }
  public static void Verify(TurneroPage page){VerifyMissingHeaders(page);VerifyActionExclusion(page);
