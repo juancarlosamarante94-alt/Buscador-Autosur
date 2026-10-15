@@ -64,7 +64,38 @@ static class TurneroPdfFixture {
   }
   Console.WriteLine("OK columna Acción completa excluida con encabezado centrado: ambos lectores, dos escalas y texto arbitrario; conserva servicio e importes");
  }
- public static void Verify(TurneroPage page){VerifyActionExclusion(page);
+ static void VerifyMissingHeaders(TurneroPage page){
+  var first=new System.Text.StringBuilder();var second=new System.Text.StringBuilder();
+  Text(first,1,20,30,"Viernes, 16 de octubre de 2026");
+  Row(first,1,100,"08:15","ALFA APELLIDO",1,false);
+  Row(second,1.2,140,"09:00","BETA APELLIDO",2,false);
+  Row(second,1.2,330,"10:00","OTRO CLIENTE",90,true);
+  // A wide page with unchanged content coordinates reproduces the failed
+  // assumption that column scale equals page width divided by 595.
+  string pdf=Document(new[]{first.ToString(),second.ToString()},new[]{1d,1.2d})
+   .Replace("/MediaBox [0 0 595 842]","/MediaBox [0 0 842 842]")
+   .Replace("/MediaBox [0 0 714 1010.4]","/MediaBox [0 0 1010.4 1010.4]");
+  string path=System.IO.Path.Combine(System.IO.Path.GetTempPath(),"TurneroHeaderless_"+Guid.NewGuid().ToString("N")+".pdf");
+  try{
+   System.IO.File.WriteAllText(path,pdf,System.Text.Encoding.ASCII);
+   var rows=(List<Appointment>)page.GetType().GetMethod("Extract",BindingFlags.NonPublic|BindingFlags.Instance).Invoke(page,new object[]{path});
+   if(rows.Count!=2)throw new Exception("No recupera agenda sin encabezados en hoja ancha: "+rows.Count);
+   for(int i=0;i<rows.Count;i++){
+    if(rows[i].Cliente!=(i==0?"ALFA APELLIDO":"BETA APELLIDO")||rows[i].Telefono!="11111111"+(i+1).ToString("00")||rows[i].Patente!="AA"+(i+1).ToString("000")+"AA")throw new Exception("Datos recortados en agenda sin encabezados");
+    if(!rows[i].Servicio.Contains("$35.000")||rows[i].Servicio.Contains("Avisar")||rows[i].Servicio.Contains("Cancelar"))throw new Exception("Servicios o Acción incorrectos en agenda sin encabezados");
+   }
+   var glyphRows=(List<Appointment>)page.GetType().GetMethod("ExtractVehicleWords",BindingFlags.NonPublic|BindingFlags.Instance).Invoke(page,new object[]{path,true});
+   if(glyphRows.Count!=2||glyphRows[0].Patente!="AA001AA"||glyphRows[0].Telefono!="1111111101")throw new Exception("Falla respaldo de letras individuales");
+   // Brand and model can arrive as one PDF word.
+   string joined=pdf.Replace("(RENAULT KANGOO)","(RENAULTKANGOO)");
+   System.IO.File.WriteAllText(path,joined,System.Text.Encoding.ASCII);
+   rows=(List<Appointment>)page.GetType().GetMethod("Extract",BindingFlags.NonPublic|BindingFlags.Instance).Invoke(page,new object[]{path});
+   if(rows.Count!=2||!rows[0].Modelo.Contains("KANGOO"))throw new Exception("No lee marca y modelo unidos");
+   Console.WriteLine("OK agenda original sin encabezados; hoja ancha y contenido a distintas escalas; Renault, teléfonos, servicio y exclusión Acción");
+   Console.WriteLine("OK lectura de respaldo desde letras; reconoce marca y modelo unidos");
+  }finally{System.IO.File.Delete(path);}
+ }
+ public static void Verify(TurneroPage page){VerifyMissingHeaders(page);VerifyActionExclusion(page);
  var p1=new System.Text.StringBuilder();Header(p1,1,true);Row(p1,1,100,"08:15","ALFA APELLIDO",1,false);Text(p1,1,400,278,"DEBE ENTREGARSE AL MEDIODIA");
  Row(p1,1,310,"08:30","BETA DOS|SEGUNDO APELLIDO",2,false);Row(p1,1,430,"08:30","CLIENTE NISSAN",90,true);Row(p1,1,540,"08:30","Gamma Apellido",3,false);Row(p1,1,670,"08:45","DELTA APELLIDO",4,false);Text(p1,1,505,832,"Ver capacidad del taller");
  var p2=new System.Text.StringBuilder();Header(p2,1.2,false);Text(p2,1.2,400,100,"CONTINUA SERVICIO EN OTRA PAGINA");Row(p2,1.2,140,"09:00","EMPRESA ONDA|COLOR S.R.L. 30-12345678-9",5,false);Row(p2,1.2,330,"09:00","EPSILON APELLIDO",6,false);Row(p2,1.2,520,"09:00","ZETA APELLIDO|OTRO APELLIDO",7,false);Text(p2,1.2,20,650,"09:15");Text(p2,1.2,68,650,"ASESOR");Text(p2,1.2,520,650,"Cambiar a Disponible");Row(p2,1.2,710,"14:00","CLIENTE NISSAN",91,true);Text(p2,1.2,505,832,"Ver capacidad del taller");

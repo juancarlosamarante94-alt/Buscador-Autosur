@@ -84,12 +84,12 @@ jobs:
             turnero-impresion.png
             turnero-vista-previa.png
           body: |
-            App taller 1.2.11: instalacion sin reemplazar carpetas bloqueadas.
-            - Prepara cada actualizacion en una carpeta nueva y actualiza el mismo acceso directo.
-            - Conserva ambas bases locales y mantiene la instalacion anterior como respaldo.
-            - Evita mover o borrar ejecutables y bibliotecas que Windows mantiene en uso.
-            - Verifica actualizaciones sucesivas y que un fallo no cambie la instalacion activa.
-            - Incluye todas las mejoras del turnero de 1.2.10.
-            Probado en Windows con un archivo realmente bloqueado durante la instalacion.
+            App taller 1.2.12: lectura de agenda sin depender de encabezados.
+            - Corrige el respaldo que escalaba las columnas por el ancho total de la hoja.
+            - Reconoce el tamaño del contenido por la posición de los vehículos.
+            - Agrega lectura alternativa desde letras individuales y reconoce marca/modelo unidos.
+            - Conserva la exclusión de Acción y el instalador que evita carpetas bloqueadas.
+            Pruebas en Windows: PDF sin encabezados, hoja ancha, distintas escalas y letras individuales.
+            El PDF privado del usuario no se publica ni se ejecuta en Actions.
             Sin DAT ni datos de clientes en el paquete publico.
           generate_release_notes: true

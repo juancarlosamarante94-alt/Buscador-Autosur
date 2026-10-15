@@ -76,7 +76,30 @@ public class TurneroPage:UserControl {
 
  AgendaColumns HeaderColumns(List<AgendaWord> words,double width){foreach(var candidate in words.Where(w=>LabelKey(w.Text)=="CLIENTE").OrderBy(w=>w.Y)){var line=words.Where(w=>Math.Abs(w.Y-candidate.Y)<6).OrderBy(w=>w.X).ToList();Func<string,AgendaWord> label=key=>line.FirstOrDefault(w=>LabelKey(w.Text)==key);var turn=label("TURNO");var advisor=label("ASESOR");var vehicle=label("VEHICULO");var service=label("SERVICIOS");var action=label("ACCION");if(turn==null||advisor==null||vehicle==null||service==null||action==null)continue;if(!(turn.X<advisor.X&&advisor.X<candidate.X&&candidate.X<vehicle.X&&vehicle.X<service.X&&service.X<action.X))continue;return new AgendaColumns{Turn=turn.X-4,Advisor=advisor.X-4,Client=candidate.X-4,Vehicle=vehicle.X-4,Service=service.X-4,Action=ActionBoundary(words,service.X-4,action.X-4),Header=line.Where(w=>new[]{"TURNO","ASESOR","CLIENTE","VEHICULO","SERVICIOS","ACCION"}.Contains(LabelKey(w.Text))).Max(w=>w.Y)+7,Width=width};}return null;}
  void AddRowWords(AgendaRow row,IEnumerable<AgendaWord> words,AgendaColumns c){foreach(var w in words){if(w.X>=c.Client&&w.X<c.Vehicle)row.Client.Add(w);else if(w.X>=c.Vehicle&&w.X<c.Service)row.Vehicle.Add(w);else if(w.X>=c.Service&&w.X<c.Action)row.Service.Add(w);}}
- List<Appointment> ExtractAdaptive(string path){var rows=new List<AgendaRow>();string date="";AgendaColumns previous=null;double offset=0;using(PdfDocument doc=PdfDocument.Open(path)){int pageNo=0;foreach(Page page in doc.GetPages()){pageNo++;var words=page.GetWords().Select(w=>new AgendaWord{Text=w.Text,X=w.BoundingBox.Left,Y=page.Height-w.BoundingBox.Top}).ToList();if(pageNo==1)date=FindDate(words);var columns=HeaderColumns(words,page.Width);if(columns==null){if(previous==null)throw new Exception("No se detectaron las columnas Turno, Asesor, Cliente, Vehículo, Servicios y Acción en la página "+pageNo+".");double scale=page.Width/previous.Width;columns=new AgendaColumns{Turn=previous.Turn*scale,Advisor=previous.Advisor*scale,Client=previous.Client*scale,Vehicle=previous.Vehicle*scale,Service=previous.Service*scale,Action=previous.Action*scale,Header=0,Width=page.Width};}previous=columns;double bottom=page.Height-12;var footer=words.Where(w=>w.Y>page.Height*.85&&LabelKey(w.Text)=="CAPACIDAD").OrderBy(w=>w.Y).FirstOrDefault();if(footer!=null)bottom=Math.Min(bottom,footer.Y-9);var body=words.Where(w=>w.Y>=columns.Header&&w.Y<bottom).ToList();var times=body.Where(w=>w.X>=columns.Turn&&w.X<columns.Advisor&&Regex.IsMatch(w.Text,@"^\d{1,2}:\d{2}$")).OrderBy(w=>w.Y).ToList();if(rows.Count>0){double first=times.Count>0?times[0].Y-6:bottom;var leading=body.Where(w=>w.Y<first).Select(w=>new AgendaWord{Text=w.Text,X=w.X,Y=w.Y+offset});AddRowWords(rows[rows.Count-1],leading,columns);}for(int i=0;i<times.Count;i++){double start=times[i].Y-6,end=i+1<times.Count?times[i+1].Y-6:bottom;var row=new AgendaRow{Time=times[i].Text};AddRowWords(row,body.Where(w=>w.Y>=start&&w.Y<end).Select(w=>new AgendaWord{Text=w.Text,X=w.X,Y=w.Y+offset}),columns);rows.Add(row);}offset+=page.Height;}}
+
+ List<AgendaWord> ReadWords(Page page,bool letters){
+  if(!letters)return page.GetWords().Select(w=>new AgendaWord{Text=w.Text,X=w.BoundingBox.Left,Y=page.Height-w.BoundingBox.Top}).ToList();
+  // Reconstruct words from individual glyphs when PDF word grouping fails.
+  var result=new List<AgendaWord>();
+  foreach(var line in page.Letters.GroupBy(l=>Math.Round(l.StartBaseLine.Y,1)).OrderByDescending(g=>g.Key)){
+   var text=new StringBuilder();double left=0,right=0,top=0;
+   foreach(var letter in line.OrderBy(l=>l.GlyphRectangle.Left)){
+    string value=letter.Value;double x=letter.GlyphRectangle.Left;
+    if(String.IsNullOrWhiteSpace(value)||(text.Length>0&&x-right>Math.Max(1.2,letter.GlyphRectangle.Height*.25))){
+     if(text.Length>0){result.Add(new AgendaWord{Text=text.ToString(),X=left,Y=page.Height-top});text.Clear();}
+    }
+    if(String.IsNullOrWhiteSpace(value))continue;
+    if(text.Length==0){left=x;top=letter.GlyphRectangle.Top;}
+    else top=Math.Max(top,letter.GlyphRectangle.Top);
+    text.Append(value);right=letter.GlyphRectangle.Right;
+   }
+   if(text.Length>0)result.Add(new AgendaWord{Text=text.ToString(),X=left,Y=page.Height-top});
+  }
+  return result;
+ }
+
+ List<Appointment> ExtractAdaptive(string path){return ExtractAdaptiveWords(path,false);}
+ List<Appointment> ExtractAdaptiveWords(string path,bool letters){var rows=new List<AgendaRow>();string date="";AgendaColumns previous=null;double offset=0;using(PdfDocument doc=PdfDocument.Open(path)){int pageNo=0;foreach(Page page in doc.GetPages()){pageNo++;var words=ReadWords(page,letters);if(pageNo==1)date=FindDate(words);var columns=HeaderColumns(words,page.Width);if(columns==null){if(previous==null)throw new Exception("No se detectaron las columnas Turno, Asesor, Cliente, Vehículo, Servicios y Acción en la página "+pageNo+".");double scale=page.Width/previous.Width;columns=new AgendaColumns{Turn=previous.Turn*scale,Advisor=previous.Advisor*scale,Client=previous.Client*scale,Vehicle=previous.Vehicle*scale,Service=previous.Service*scale,Action=previous.Action*scale,Header=0,Width=page.Width};}previous=columns;double bottom=page.Height-12;var footer=words.Where(w=>w.Y>page.Height*.85&&LabelKey(w.Text)=="CAPACIDAD").OrderBy(w=>w.Y).FirstOrDefault();if(footer!=null)bottom=Math.Min(bottom,footer.Y-9);var body=words.Where(w=>w.Y>=columns.Header&&w.Y<bottom).ToList();var times=body.Where(w=>w.X>=columns.Turn&&w.X<columns.Advisor&&Regex.IsMatch(w.Text,@"^\d{1,2}:\d{2}$")).OrderBy(w=>w.Y).ToList();if(rows.Count>0){double first=times.Count>0?times[0].Y-6:bottom;var leading=body.Where(w=>w.Y<first).Select(w=>new AgendaWord{Text=w.Text,X=w.X,Y=w.Y+offset});AddRowWords(rows[rows.Count-1],leading,columns);}for(int i=0;i<times.Count;i++){double start=times[i].Y-6,end=i+1<times.Count?times[i+1].Y-6:bottom;var row=new AgendaRow{Time=times[i].Text};AddRowWords(row,body.Where(w=>w.Y>=start&&w.Y<end).Select(w=>new AgendaWord{Text=w.Text,X=w.X,Y=w.Y+offset}),columns);rows.Add(row);}offset+=page.Height;}}
  var result=new List<Appointment>();foreach(var row in rows){var appointment=ParseAgendaRow(row,date);if(appointment!=null)result.Add(appointment);}return result;}
 
  // Compatibility reader: the source agenda does not always align clock cells
@@ -87,14 +110,29 @@ public class TurneroPage:UserControl {
   try{adaptive=ExtractAdaptive(path);}catch(Exception ex){adaptiveError=ex.Message;}
   var compatible=ExtractByVehicle(path);
   var result=adaptive!=null&&adaptive.Count>=compatible.Count?adaptive:compatible;
-  if(result.Count==0&&adaptiveError.Length>0)throw new Exception(adaptiveError);
+  if(result.Count==0){
+   try{var glyphRows=ExtractAdaptiveWords(path,true);if(glyphRows.Count>result.Count)result=glyphRows;}catch{}
+   try{var glyphRows=ExtractVehicleWords(path,true);if(glyphRows.Count>result.Count)result=glyphRows;}catch{}
+  }
+  if(result.Count==0){
+   int pages=0,characters=0,brands=0,times=0;
+   using(var doc=PdfDocument.Open(path)){foreach(var page in doc.GetPages()){pages++;characters+=page.Letters.Count;var words=ReadWords(page,true);brands+=words.Count(IsBrand);times+=words.Count(w=>Regex.IsMatch(w.Text,@"^\d{1,2}:\d{2}$"));}}
+   if(characters==0)throw new Exception("El PDF no contiene texto legible. Se necesita la agenda guardada directamente como PDF.");
+   if(brands>0||adaptiveError.Length>0)throw new Exception("No se pudieron separar los turnos de esta agenda. Datos de diagnostico (sin datos personales): paginas="+pages+", caracteres="+characters+", marcas="+brands+", horarios="+times+".");
+  }
   return result;
  }
- List<Appointment> ExtractByVehicle(string path){
+ List<Appointment> ExtractByVehicle(string path){return ExtractVehicleWords(path,false);}
+ List<Appointment> ExtractVehicleWords(string path,bool letters){
   var all=new List<AgendaWord>();var actionLimits=new Dictionary<AgendaWord,double>();double offset=0,previousAction=520;string date="";
   using(PdfDocument doc=PdfDocument.Open(path)){int number=0;foreach(Page page in doc.GetPages()){
-   number++;double scale=page.Width/595d;
-   var words=page.GetWords().Select(w=>new AgendaWord{Text=w.Text,X=w.BoundingBox.Left/scale,Y=(page.Height-w.BoundingBox.Top)/scale}).ToList();
+   number++;var raw=ReadWords(page,letters);
+   var anchors=raw.Where(IsBrand).OrderBy(w=>w.X).ToList();
+   // Printed content can occupy only part of a landscape/wide PDF page.
+   // Measure the content itself instead of assuming it fills A4's width.
+   double scale=anchors.Count>0?anchors[anchors.Count/2].X/318d:page.Width/595d;
+   if(scale<.1)scale=1;
+   var words=raw.Select(w=>new AgendaWord{Text=w.Text,X=w.X/scale,Y=w.Y/scale}).ToList();
    if(number==1)date=FindDate(words);
    var columns=HeaderColumns(words,595);
    double action=ActionBoundary(words,395,columns!=null&&columns.Action>400?columns.Action:previousAction);previousAction=action;
@@ -103,7 +141,7 @@ public class TurneroPage:UserControl {
   }}
   var brands=all.Where(IsBrand).OrderBy(w=>w.Y).ToList();var result=new List<Appointment>();
   for(int i=0;i<brands.Count;i++){
-   var brand=brands[i];if(!brand.Text.Equals("RENAULT",StringComparison.OrdinalIgnoreCase))continue;
+   var brand=brands[i];if(!Regex.IsMatch(brand.Text,@"^RENAULT",RegexOptions.IgnoreCase))continue;
    double start=brand.Y-24,end=brand.Y+155;
    if(i+1<brands.Count)end=Math.Min(end,brands[i+1].Y-25);
    var words=all.Where(w=>w.Y>=start&&w.Y<=end).ToList();
@@ -121,12 +159,12 @@ public class TurneroPage:UserControl {
   }
   return result;
  }
- bool IsBrand(AgendaWord word){return word.Text.Equals("RENAULT",StringComparison.OrdinalIgnoreCase)||word.Text.Equals("NISSAN",StringComparison.OrdinalIgnoreCase);}
+ bool IsBrand(AgendaWord word){return Regex.IsMatch(word.Text,@"^(RENAULT|NISSAN)(?:\b|(?=[A-Z]))",RegexOptions.IgnoreCase);}
 
  List<string> RowLines(IEnumerable<AgendaWord> words){return Lines(words,Double.MinValue,Double.MaxValue,Double.MinValue,Double.MaxValue).Select(x=>x.Text.Trim()).Where(x=>x.Length>0).ToList();}
  bool PhoneLine(string line){if(line.Contains("@")||Regex.IsMatch(line,@"\b\d{2}\s*-\s*\d{8}\s*-\s*\d\b"))return false;string clean=Regex.Replace(line,@"^\s*(tel[eé]fono|tel[.]?|celular|cel[.]?)\s*:?\s*","",RegexOptions.IgnoreCase);if(Regex.IsMatch(clean,@"[^\d\s+()./-]"))return false;int digits=Regex.Replace(clean,@"\D","").Length;return digits>=7&&digits<=18;}
- Appointment ParseAgendaRow(AgendaRow row,string date){var vehicle=RowLines(row.Vehicle);if(!vehicle.Any(s=>Regex.IsMatch(s,@"\bRENAULT\b",RegexOptions.IgnoreCase))||vehicle.Any(s=>Regex.IsMatch(s,@"\bNISSAN\b",RegexOptions.IgnoreCase)))return null;var a=new Appointment{Fecha=date,Hora=row.Time};var clients=RowLines(row.Client);a.Telefono=clients.FirstOrDefault(PhoneLine)??"";var names=new List<string>();foreach(var line in clients){string key=LabelKey(line);if(line.Contains("@")||PhoneLine(line)||key.Contains("RECORDAR")||key=="TURNOHECHO"||key=="TURNO"||key=="HECHO")break;if(Regex.IsMatch(line,@"[A-Za-zÁÉÍÓÚÑáéíóúñ]")||Regex.IsMatch(line,@"^\d{2}\s*-\s*\d{8}\s*-\s*\d$"))names.Add(line);}a.Cliente=String.Join(" ",names.ToArray()).Trim();
- bool started=false,modelDone=false;var model=new List<string>();foreach(string line in vehicle){string compact=Regex.Replace(line,@"[^A-Za-z0-9]","").ToUpperInvariant(),key=LabelKey(line);if(IsPlate(compact)){a.Patente=compact;modelDone=true;continue;}if(Regex.IsMatch(compact,@"^[A-HJ-NPR-Z0-9]{17}$",RegexOptions.IgnoreCase)){a.Chasis=compact;modelDone=true;continue;}if(key.Contains("NUMERODECHASIS")||key=="VEHICULO"){modelDone=true;continue;}if(Regex.IsMatch(line,@"^\s*[\d.,]+\s*km",RegexOptions.IgnoreCase))continue;string value=line;if(Regex.IsMatch(value,@"\bRENAULT\b",RegexOptions.IgnoreCase)){started=true;value=Regex.Replace(value,@"\bRENAULT\b","",RegexOptions.IgnoreCase).Trim();}if(started&&!modelDone&&value.Length>0)model.Add(value);}a.Modelo=String.Join(" ",model.ToArray()).Trim();a.Servicio=String.Join(" ",RowLines(row.Service).Where(s=>LabelKey(s)!="SERVICIOS").ToArray()).Trim();return a;}
+ Appointment ParseAgendaRow(AgendaRow row,string date){var vehicle=RowLines(row.Vehicle);if(!vehicle.Any(s=>Regex.IsMatch(s,@"\bRENAULT",RegexOptions.IgnoreCase))||vehicle.Any(s=>Regex.IsMatch(s,@"\bNISSAN",RegexOptions.IgnoreCase)))return null;var a=new Appointment{Fecha=date,Hora=row.Time};var clients=RowLines(row.Client);a.Telefono=clients.FirstOrDefault(PhoneLine)??"";var names=new List<string>();foreach(var line in clients){string key=LabelKey(line);if(line.Contains("@")||PhoneLine(line)||key.Contains("RECORDAR")||key=="TURNOHECHO"||key=="TURNO"||key=="HECHO")break;if(Regex.IsMatch(line,@"[A-Za-zÁÉÍÓÚÑáéíóúñ]")||Regex.IsMatch(line,@"^\d{2}\s*-\s*\d{8}\s*-\s*\d$"))names.Add(line);}a.Cliente=String.Join(" ",names.ToArray()).Trim();
+ bool started=false,modelDone=false;var model=new List<string>();foreach(string line in vehicle){string compact=Regex.Replace(line,@"[^A-Za-z0-9]","").ToUpperInvariant(),key=LabelKey(line);if(IsPlate(compact)){a.Patente=compact;modelDone=true;continue;}if(Regex.IsMatch(compact,@"^[A-HJ-NPR-Z0-9]{17}$",RegexOptions.IgnoreCase)){a.Chasis=compact;modelDone=true;continue;}if(key.Contains("NUMERODECHASIS")||key=="VEHICULO"){modelDone=true;continue;}if(Regex.IsMatch(line,@"^\s*[\d.,]+\s*km",RegexOptions.IgnoreCase))continue;string value=line;if(Regex.IsMatch(value,@"\bRENAULT",RegexOptions.IgnoreCase)){started=true;value=Regex.Replace(value,@"\bRENAULT","",RegexOptions.IgnoreCase).Trim();}if(started&&!modelDone&&value.Length>0)model.Add(value);}a.Modelo=String.Join(" ",model.ToArray()).Trim();a.Servicio=String.Join(" ",RowLines(row.Service).Where(s=>LabelKey(s)!="SERVICIOS").ToArray()).Trim();return a;}
  string FindDate(List<AgendaWord>w){foreach(var l in Lines(w,0,400,-1,200)){string t=l.Text.ToLowerInvariant();if(Regex.IsMatch(t,@"\d{1,2}\s+de\s+[a-záéíóú]+\s+de\s+\d{4}")){var m=Regex.Match(t,@"(\d{1,2})\s+de\s+([a-záéíóú]+)\s+de\s+(\d{4})");var months=new Dictionary<string,int>{{"enero",1},{"febrero",2},{"marzo",3},{"abril",4},{"mayo",5},{"junio",6},{"julio",7},{"agosto",8},{"septiembre",9},{"octubre",10},{"noviembre",11},{"diciembre",12}};int mo;if(m.Success&&months.TryGetValue(m.Groups[2].Value,out mo))return m.Groups[1].Value.PadLeft(2,'0')+"/"+mo.ToString("00")+"/"+m.Groups[3].Value.Substring(2);}}return "";}
  bool IsPlate(string s){return Regex.IsMatch(s,@"^[A-Z]{2}\d{3}[A-Z]{2}$",RegexOptions.IgnoreCase)||Regex.IsMatch(s,@"^[A-Z]{3}\d{3}$",RegexOptions.IgnoreCase);}
  void CompleteMotors(){string path=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"vehiculos.dat");if(!File.Exists(path))return;var byVin=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);foreach(string line in File.ReadLines(path,Encoding.UTF8)){string[] p=line.Split('\t');if(p.Length!=7)continue;string vin=Tools.N(Tools.D(p[0]));string motor=Tools.N(Tools.D(p[6]));if(vin.Length>0&&motor.Length>0&&!byVin.ContainsKey(vin))byVin.Add(vin,motor.Length<=3?motor:motor.Substring(0,3));}foreach(var a in turns){string key=Tools.N(a.Chasis);string motor;if(key.Length>0&&byVin.TryGetValue(key,out motor))a.Motor=motor;}}
