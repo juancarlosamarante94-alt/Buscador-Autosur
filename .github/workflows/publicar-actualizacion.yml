@@ -52,6 +52,11 @@ jobs:
           Add-Type -TypeDefinition $code -Language CSharp -ReferencedAssemblies $refs -OutputAssembly (Join-Path $PWD 'InstallerCompile.exe') -OutputType WindowsApplication -ErrorAction Stop
           if (!(Test-Path 'InstallerCompile.exe')) { throw 'No compila como el instalador' }
           Write-Output 'OK compilación Add-Type del instalador'
+      - name: Probar instalador con archivos bloqueados y actualizaciones sucesivas
+        shell: powershell
+        run: |
+          & ./tests/InstallerTests.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Fallaron pruebas reales del instalador' }
       - name: Crear paquete sin DAT
         shell: pwsh
         run: |
@@ -79,12 +84,12 @@ jobs:
             turnero-impresion.png
             turnero-vista-previa.png
           body: |
-            App taller 1.2.10: excluye la columna Acción del servicio del turnero.
-            - Aplica la misma corrección publicada en App repuestos 1.3.8.
-            - Ajusta el límite cuando el encabezado Acción está centrado respecto de los controles.
-            - Excluye toda esa columna, incluido texto no reconocido, en ambos lectores de PDF.
-            - Mantiene las notas e importes del servicio, la navegación, la vista previa y el alto de impresión.
-            Probado en Windows con PDF sintético y compilación del instalador.
-            La comprobación final con el PDF privado del usuario sigue pendiente.
-            Sin DAT ni datos de clientes en el paquete público.
+            App taller 1.2.11: instalacion sin reemplazar carpetas bloqueadas.
+            - Prepara cada actualizacion en una carpeta nueva y actualiza el mismo acceso directo.
+            - Conserva ambas bases locales y mantiene la instalacion anterior como respaldo.
+            - Evita mover o borrar ejecutables y bibliotecas que Windows mantiene en uso.
+            - Verifica actualizaciones sucesivas y que un fallo no cambie la instalacion activa.
+            - Incluye todas las mejoras del turnero de 1.2.10.
+            Probado en Windows con un archivo realmente bloqueado durante la instalacion.
+            Sin DAT ni datos de clientes en el paquete publico.
           generate_release_notes: true

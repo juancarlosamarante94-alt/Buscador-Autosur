@@ -7,8 +7,8 @@ INSTALACION
 2. Hace doble clic en "Instalar Buscador VIN.cmd".
 3. Al finalizar, el programa se abrira y quedara un acceso directo en el escritorio.
 
-El instalador actualiza la misma aplicacion y conserva un respaldo de la version anterior.
-Antes de reemplazarla, espera a que Windows cierre y libere el ejecutable viejo.
+El instalador conserva el mismo acceso directo y las bases locales.
+Prepara la nueva version en una carpeta independiente, sin mover ni borrar la anterior si Windows mantiene archivos en uso.
 
 USO
 - Pestaña Vehiculos: escribi parte de una patente, nombre de modelo, codigo de modelo o motor.
@@ -39,3 +39,5 @@ ACTUALIZACION DEL TURNERO
 - Version 1.2.6: la busqueda de vehiculos reconoce el nombre comercial dentro de la descripcion, por ejemplo Clio, Kangoo, Sandero o Duster, ademas del codigo de modelo.
 - Version 1.2.7: el actualizador espera el cierre completo de la aplicacion y reintenta el reemplazo si Windows mantiene temporalmente un archivo en uso.
 - Version 1.2.8: el proceso de actualizacion trabaja desde una carpeta temporal para no bloquear la carpeta de instalacion que debe reemplazar.
+
+- Version 1.2.11: instala en una carpeta nueva y cambia el acceso directo solo al completar la compilacion; conserva versiones anteriores y las bases locales.

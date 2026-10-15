@@ -1,115 +1,117 @@
+param(
+    [switch]$SinInteraccion,
+    [switch]$NoIniciar,
+    [string]$DirectorioInstalacion = "",
+    [string]$DirectorioEscritorio = ""
+)
 $ErrorActionPreference = "Stop"
 $source = Split-Path -Parent $MyInvocation.MyCommand.Path
-$installRoot = Join-Path $env:LOCALAPPDATA "Buscador VIN Autosur"
-$install = Join-Path $installRoot "app"
-$stage = Join-Path $installRoot ("preparando_" + [Guid]::NewGuid().ToString("N"))
-$backup = Join-Path $installRoot "respaldo_anterior"
-$desktop = [Environment]::GetFolderPath("Desktop")
-
-# Evita que PowerShell mantenga bloqueada la carpeta "app" por usarla como ubicacion actual.
+$installRoot = if ($DirectorioInstalacion) { [IO.Path]::GetFullPath($DirectorioInstalacion) } else { Join-Path $env:LOCALAPPDATA "Buscador VIN Autosur" }
+$desktop = if ($DirectorioEscritorio) { $DirectorioEscritorio } else { [Environment]::GetFolderPath("Desktop") }
+$rootPrefix = $installRoot.TrimEnd('\') + '\'
+$pointer = Join-Path $installRoot "instalacion-actual.txt"
+$shortcutPath = Join-Path $desktop "Buscador VIN Autosur.lnk"
+$destination = $null
+$activated = $false
 Set-Location ([IO.Path]::GetTempPath())
 
 function Stop-BuscadorAutosur {
     $deadline = (Get-Date).AddSeconds(20)
     do {
         $targets = @(Get-Process -ErrorAction SilentlyContinue | Where-Object {
-            $_.ProcessName -eq "Buscador Autosur" -or
-            ($_.Path -and $_.Path.StartsWith($installRoot, [StringComparison]::OrdinalIgnoreCase))
+            $_.Id -ne $PID -and $_.Path -and
+            $_.Path.StartsWith($rootPrefix, [StringComparison]::OrdinalIgnoreCase)
         })
         if ($targets.Count -eq 0) { return }
         $targets | Stop-Process -Force -ErrorAction SilentlyContinue
         Start-Sleep -Milliseconds 500
     } while ((Get-Date) -lt $deadline)
-
-    throw "La aplicacion anterior no termino de cerrarse. Cerra Buscador Autosur y volve a intentar."
+    throw "La aplicacion anterior no termino de cerrarse. Cerra App taller y volve a intentar."
 }
 
-function Invoke-WithRetry {
-    param(
-        [Parameter(Mandatory=$true)][scriptblock]$Action,
-        [Parameter(Mandatory=$true)][string]$Description,
-        [int]$Attempts = 15
-    )
-    for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
-        try {
-            & $Action
-            return
-        }
-        catch {
-            if ($attempt -eq $Attempts) {
-                throw "$Description Windows mantuvo un archivo en uso despues de $Attempts intentos."
-            }
-            [GC]::Collect()
-            [GC]::WaitForPendingFinalizers()
-            Start-Sleep -Milliseconds 700
-        }
-    }
+function Test-OwnPath([string]$path) {
+    if (!$path) { return $false }
+    return [IO.Path]::GetFullPath($path).StartsWith($rootPrefix, [StringComparison]::OrdinalIgnoreCase)
 }
 
 try {
     New-Item -ItemType Directory -Force -Path $installRoot | Out-Null
+    New-Item -ItemType Directory -Force -Path $desktop | Out-Null
     Stop-BuscadorAutosur
-
-    New-Item -ItemType Directory -Force -Path $stage | Out-Null
-    $legacy = Get-ChildItem (Join-Path $installRoot "versiones") -Directory -ErrorAction SilentlyContinue |
-        Sort-Object Name -Descending | Select-Object -First 1
-
-    foreach ($dataName in @("vehiculos.dat", "clientes.dat")) {
-        $sourceData = Join-Path $source $dataName
-        $currentData = Join-Path $install $dataName
-        $legacyData = if ($legacy) { Join-Path $legacy.FullName $dataName } else { $null }
-        if (Test-Path $sourceData) { Copy-Item -Force $sourceData (Join-Path $stage $dataName) }
-        elseif (Test-Path $currentData) { Copy-Item -Force $currentData (Join-Path $stage $dataName) }
-        elseif ($legacyData -and (Test-Path $legacyData)) { Copy-Item -Force $legacyData (Join-Path $stage $dataName) }
-        else { throw "No se encontro $dataName. Para la primera instalacion usa el instalador completo." }
-    }
-
-    Copy-Item -Force (Join-Path $source "icono_autosur.ico") (Join-Path $stage "icono_autosur.ico")
-    Copy-Item -Force (Join-Path $source "lib\*.dll") $stage
-    $sourceCode = (Get-Content -Raw -Encoding UTF8 (Join-Path $source "BuscadorVIN.cs")) + "`r`n" +
-                  (Get-Content -Raw -Encoding UTF8 (Join-Path $source "Turnero.cs"))
-    $stageExe = Join-Path $stage "Buscador Autosur.exe"
-    $references = @("System.Windows.Forms", "System.Drawing", "System.Core") +
-                  @(Get-ChildItem (Join-Path $stage "*.dll") | ForEach-Object { $_.FullName })
-    Add-Type -TypeDefinition $sourceCode -Language CSharp `
-        -ReferencedAssemblies $references `
-        -OutputAssembly $stageExe -OutputType WindowsApplication
-    if (!(Test-Path $stageExe)) { throw "No se pudo generar la aplicacion nueva." }
-
-    if (Test-Path $backup) {
-        Invoke-WithRetry { Remove-Item -LiteralPath $backup -Recurse -Force } "No se pudo quitar el respaldo anterior."
-    }
-    if (Test-Path $install) {
-        Invoke-WithRetry { Move-Item -LiteralPath $install -Destination $backup } "No se pudo reemplazar la instalacion anterior."
-    }
-    Invoke-WithRetry { Move-Item -LiteralPath $stage -Destination $install } "No se pudo activar la actualizacion."
-
-    $exe = Join-Path $install "Buscador Autosur.exe"
-    $icon = Join-Path $install "icono_autosur.ico"
     $shell = New-Object -ComObject WScript.Shell
-    $shortcut = $shell.CreateShortcut((Join-Path $desktop "Buscador VIN Autosur.lnk"))
+    $candidates = @($source)
+    # The shortcut identifies the active installation, even if an older update
+    # could not finish writing the pointer.
+    if (Test-Path -LiteralPath $shortcutPath) {
+        $oldShortcut = $shell.CreateShortcut($shortcutPath)
+        $activeDirectory = Split-Path -Parent $oldShortcut.TargetPath
+        if (Test-OwnPath $activeDirectory) { $candidates += $activeDirectory }
+    }
+    if (Test-Path -LiteralPath $pointer) {
+        $activeDirectory = (Get-Content -Raw -LiteralPath $pointer).Trim()
+        if (Test-OwnPath $activeDirectory) { $candidates += $activeDirectory }
+    }
+    $candidates += (Join-Path $installRoot "app")
+    $candidates += (Join-Path $installRoot "respaldo_anterior")
+    $candidates += @(Get-ChildItem (Join-Path $installRoot "versiones") -Directory -ErrorAction SilentlyContinue |
+        Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName "Buscador Autosur.exe") } |
+        Sort-Object Name -Descending | ForEach-Object FullName)
+    # Always copy the pair from one installation; never mix different bases.
+    $dataDirectory = $null
+    foreach ($candidate in $candidates) {
+        if ((Test-Path -LiteralPath (Join-Path $candidate "vehiculos.dat")) -and
+            (Test-Path -LiteralPath (Join-Path $candidate "clientes.dat"))) {
+            $dataDirectory = $candidate
+            break
+        }
+    }
+    if (!$dataDirectory) { throw "No se encontraron vehiculos.dat y clientes.dat. Para la primera instalacion usa el instalador completo." }
+    $sourceCode = (Get-Content -Raw -Encoding UTF8 (Join-Path $source "BuscadorVIN.cs")) + [Environment]::NewLine +
+                  (Get-Content -Raw -Encoding UTF8 (Join-Path $source "Turnero.cs"))
+    $version = [regex]::Match($sourceCode, 'AppVersion="([0-9.]+)"').Groups[1].Value
+    if (!$version) { throw "No se encontro la version del programa." }
+    # Build in its final, unique directory. No old directory is renamed or
+    # removed, and DLLs loaded by the compiler do not need to be moved either.
+    $destination = Join-Path (Join-Path $installRoot "versiones") ("v" + $version + "_" + (Get-Date -Format "yyyyMMddHHmmssfff") + "_" + [Guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Force -Path $destination | Out-Null
+    foreach ($dataName in @("vehiculos.dat", "clientes.dat")) {
+        Copy-Item -LiteralPath (Join-Path $dataDirectory $dataName) -Destination (Join-Path $destination $dataName)
+    }
+    Copy-Item -LiteralPath (Join-Path $source "icono_autosur.ico") -Destination $destination
+    Copy-Item -Path (Join-Path $source "lib\*.dll") -Destination $destination
+    $exe = Join-Path $destination "Buscador Autosur.exe"
+    $references = @("System.Windows.Forms", "System.Drawing", "System.Core") +
+                  @(Get-ChildItem (Join-Path $destination "*.dll") | ForEach-Object FullName)
+    Add-Type -TypeDefinition $sourceCode -Language CSharp -ReferencedAssemblies $references -OutputAssembly $exe -OutputType WindowsApplication
+    if (!(Test-Path -LiteralPath $exe)) { throw "No se pudo generar la aplicacion nueva." }
+    $shortcut = $shell.CreateShortcut($shortcutPath)
     $shortcut.TargetPath = $exe
-    $shortcut.WorkingDirectory = $install
-    $shortcut.IconLocation = $icon
+    $shortcut.WorkingDirectory = $destination
+    $shortcut.IconLocation = Join-Path $destination "icono_autosur.ico"
     $shortcut.Save()
-
-    $legacyRoot = Join-Path $installRoot "versiones"
-    if (Test-Path $legacyRoot) { Remove-Item $legacyRoot -Recurse -Force -ErrorAction SilentlyContinue }
-
-    Add-Type -AssemblyName System.Windows.Forms
-    [System.Windows.Forms.MessageBox]::Show(
-        "Buscador Autosur se actualizo correctamente sobre la instalacion existente.`nSe conserva el mismo acceso directo y el mismo icono.",
-        "Actualizacion completa") | Out-Null
-    Start-Process $exe
+    $activated = $true
+    # The shortcut remains the authority if writing this recovery pointer fails.
+    try { [IO.File]::WriteAllText($pointer, $destination, [Text.Encoding]::UTF8) }
+    catch { Write-Warning "La app quedo instalada; no se pudo guardar el indicador de recuperacion." }
+    if (!$SinInteraccion) {
+        Add-Type -AssemblyName System.Windows.Forms
+        [System.Windows.Forms.MessageBox]::Show(
+            ("App taller se actualizo correctamente." + [Environment]::NewLine + "Se conservaron las bases, el mismo acceso directo y el icono."),
+            "Actualizacion completa") | Out-Null
+    }
+    if (!$NoIniciar) { Start-Process -FilePath $exe -WorkingDirectory $destination }
+    Write-Output "Instalacion completada."
 }
 catch {
-    if ((!(Test-Path $install)) -and (Test-Path $backup)) {
-        Move-Item -LiteralPath $backup -Destination $install -ErrorAction SilentlyContinue
+    $detail = $_.Exception.Message
+    # Failed preparation leaves the original shortcut and installation intact.
+    if (!$activated -and $destination -and (Test-Path -LiteralPath $destination)) {
+        Remove-Item -LiteralPath $destination -Recurse -Force -ErrorAction SilentlyContinue
     }
-    if (Test-Path $stage) { Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue }
-    Add-Type -AssemblyName System.Windows.Forms
-    [System.Windows.Forms.MessageBox]::Show(
-        "No se pudo instalar el Buscador VIN.`n`n$($_.Exception.Message)",
-        "Error de instalacion") | Out-Null
+    if ($SinInteraccion) { Write-Error ("No se pudo instalar App taller: " + $detail) -ErrorAction Continue }
+    else {
+        Add-Type -AssemblyName System.Windows.Forms
+        [System.Windows.Forms.MessageBox]::Show(("No se pudo instalar App taller." + [Environment]::NewLine + $detail), "Error de instalacion") | Out-Null
+    }
     exit 1
 }
