@@ -79,13 +79,11 @@ jobs:
             turnero-impresion.png
             turnero-vista-previa.png
           body: |
-            App taller 1.2.9: incorpora las mejoras del turnero de App repuestos 1.3.7.
-            - Navegación con barras y teclado, con fecha y hora fijas.
-            - Vista previa independiente con Cerrar, Esc, páginas y zoom.
-            - Alto de turno ajustable entre 28 y 60 mm; inicial 32 mm.
-            - Lectura de PDF por columnas y recuperación compatible por vehículo cuando se omiten horarios.
-            - Conserva el filtrado Renault, la búsqueda local de motor y las funciones originales.
-            - Conserva las bases locales y actualiza desde el repositorio de App taller.
+            App taller 1.2.10: excluye la columna Acción del servicio del turnero.
+            - Aplica la misma corrección publicada en App repuestos 1.3.8.
+            - Ajusta el límite cuando el encabezado Acción está centrado respecto de los controles.
+            - Excluye toda esa columna, incluido texto no reconocido, en ambos lectores de PDF.
+            - Mantiene las notas e importes del servicio, la navegación, la vista previa y el alto de impresión.
             Probado en Windows con PDF sintético y compilación del instalador.
             La comprobación final con el PDF privado del usuario sigue pendiente.
             Sin DAT ni datos de clientes en el paquete público.

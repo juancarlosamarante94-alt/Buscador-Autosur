@@ -41,7 +41,30 @@ static class TurneroPdfFixture {
  Text(page,scale,400,y,"SERVICIO DE 30.000 KM");Text(page,scale,400,y+12,"$406.710 + FILTRO DE");Text(page,scale,400,y+24,"COMBUSTIBLE");Text(page,scale,476,y+24,"$35.000 +");Text(page,scale,400,y+36,"INFORME DE CALCULADORES.");
  Text(page,scale,520,y,"Avisar Auto Listo");Text(page,scale,520,y+12,"Cancelar turno");}
  static string Document(string[] streams,double[] scales){var objects=new List<string>{"<< /Type /Catalog /Pages 2 0 R >>","<< /Type /Pages /Kids [4 0 R 6 0 R] /Count 2 >>","<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>"};for(int i=0;i<streams.Length;i++){objects.Add(String.Format(System.Globalization.CultureInfo.InvariantCulture,"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {0:0.###} {1:0.###}] /Resources << /Font << /F1 3 0 R >> >> /Contents {2} 0 R >>",595*scales[i],842*scales[i],5+i*2));objects.Add("<< /Length "+System.Text.Encoding.ASCII.GetByteCount(streams[i])+" >>\nstream\n"+streams[i]+"endstream");}var pdf=new System.Text.StringBuilder("%PDF-1.4\n");var offsets=new List<int>();for(int i=0;i<objects.Count;i++){offsets.Add(pdf.Length);pdf.Append(i+1).Append(" 0 obj\n").Append(objects[i]).Append("\nendobj\n");}int xref=pdf.Length;pdf.Append("xref\n0 ").Append(objects.Count+1).Append("\n0000000000 65535 f \n");foreach(int offset in offsets)pdf.Append(offset.ToString("0000000000")).Append(" 00000 n \n");pdf.Append("trailer\n<< /Size ").Append(objects.Count+1).Append(" /Root 1 0 R >>\nstartxref\n").Append(xref).Append("\n%%EOF\n");return pdf.ToString();}
- public static void Verify(TurneroPage page){
+ static void VerifyActionExclusion(TurneroPage page){
+  // Heading is centered to the right of its controls. Unknown action contents
+  // deliberately use service-like words, so keyword stripping cannot pass.
+  foreach(bool compatible in new[]{false,true}){
+   var first=new System.Text.StringBuilder();var second=new System.Text.StringBuilder();Header(first,1,true);Header(second,1.2,false);
+   Row(first,1,100,"08:15","CLIENTE ALFA",1,false);Row(second,1.2,140,"09:00","CLIENTE BETA",2,false);
+   Text(first,1,520,148,"TEXTO AJENO AL SERVICIO");Text(second,1.2,520,190,"OTRO TEXTO DE ACCION");
+   string p1=first.ToString().Replace("1 0 0 1 520 762 Tm (Accion)","1 0 0 1 560 762 Tm (Accion)");
+   string p2=second.ToString().Replace("1 0 0 1 624 914.4 Tm (Accion)","1 0 0 1 672 914.4 Tm (Accion)");
+   if(compatible){p1=p1.Replace("1 0 0 1 20 742 Tm (08:15)","1 0 0 1 5 742 Tm (08:15)");p2=p2.Replace("1 0 0 1 24 842.4 Tm (09:00)","1 0 0 1 6 842.4 Tm (09:00)");}
+   string path=System.IO.Path.Combine(System.IO.Path.GetTempPath(),"TurneroActions_"+Guid.NewGuid().ToString("N")+".pdf");
+   try{System.IO.File.WriteAllText(path,Document(new[]{p1,p2},new[]{1d,1.2d}),System.Text.Encoding.ASCII);
+    string method=compatible?"ExtractByVehicle":"ExtractAdaptive";
+    var rows=(List<Appointment>)page.GetType().GetMethod(method,BindingFlags.NonPublic|BindingFlags.Instance).Invoke(page,new object[]{path});
+    if(rows.Count!=2)throw new Exception("Exclusión Acción omitió turnos en "+method);
+    foreach(var row in rows){
+     if(row.Servicio.Contains("Avisar")||row.Servicio.Contains("Cancelar")||row.Servicio.Contains("AJENO")||row.Servicio.Contains("ACCION"))throw new Exception("Columna Acción incluida como servicio en "+method+": "+row.Servicio);
+     if(!row.Servicio.Contains("$35.000")||!row.Servicio.Contains("INFORME DE CALCULADORES."))throw new Exception("La exclusión recortó el servicio real en "+method);
+    }
+   }finally{System.IO.File.Delete(path);}
+  }
+  Console.WriteLine("OK columna Acción completa excluida con encabezado centrado: ambos lectores, dos escalas y texto arbitrario; conserva servicio e importes");
+ }
+ public static void Verify(TurneroPage page){VerifyActionExclusion(page);
  var p1=new System.Text.StringBuilder();Header(p1,1,true);Row(p1,1,100,"08:15","ALFA APELLIDO",1,false);Text(p1,1,400,278,"DEBE ENTREGARSE AL MEDIODIA");
  Row(p1,1,310,"08:30","BETA DOS|SEGUNDO APELLIDO",2,false);Row(p1,1,430,"08:30","CLIENTE NISSAN",90,true);Row(p1,1,540,"08:30","Gamma Apellido",3,false);Row(p1,1,670,"08:45","DELTA APELLIDO",4,false);Text(p1,1,505,832,"Ver capacidad del taller");
  var p2=new System.Text.StringBuilder();Header(p2,1.2,false);Text(p2,1.2,400,100,"CONTINUA SERVICIO EN OTRA PAGINA");Row(p2,1.2,140,"09:00","EMPRESA ONDA|COLOR S.R.L. 30-12345678-9",5,false);Row(p2,1.2,330,"09:00","EPSILON APELLIDO",6,false);Row(p2,1.2,520,"09:00","ZETA APELLIDO|OTRO APELLIDO",7,false);Text(p2,1.2,20,650,"09:15");Text(p2,1.2,68,650,"ASESOR");Text(p2,1.2,520,650,"Cambiar a Disponible");Row(p2,1.2,710,"14:00","CLIENTE NISSAN",91,true);Text(p2,1.2,505,832,"Ver capacidad del taller");

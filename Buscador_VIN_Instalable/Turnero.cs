@@ -54,7 +54,27 @@ public class TurneroPage:UserControl {
  class AgendaColumns {public double Turn,Advisor,Client,Vehicle,Service,Action,Header,Width;}
  class AgendaRow {public string Time="";public List<AgendaWord> Client=new List<AgendaWord>(),Vehicle=new List<AgendaWord>(),Service=new List<AgendaWord>();}
  static string LabelKey(string value){var text=new StringBuilder();foreach(char c in value.Normalize(NormalizationForm.FormD))if(System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c)!=System.Globalization.UnicodeCategory.NonSpacingMark&&Char.IsLetter(c))text.Append(Char.ToUpperInvariant(c));return text.ToString();}
- AgendaColumns HeaderColumns(List<AgendaWord> words,double width){foreach(var candidate in words.Where(w=>LabelKey(w.Text)=="CLIENTE").OrderBy(w=>w.Y)){var line=words.Where(w=>Math.Abs(w.Y-candidate.Y)<6).OrderBy(w=>w.X).ToList();Func<string,AgendaWord> label=key=>line.FirstOrDefault(w=>LabelKey(w.Text)==key);var turn=label("TURNO");var advisor=label("ASESOR");var vehicle=label("VEHICULO");var service=label("SERVICIOS");var action=label("ACCION");if(turn==null||advisor==null||vehicle==null||service==null||action==null)continue;if(!(turn.X<advisor.X&&advisor.X<candidate.X&&candidate.X<vehicle.X&&vehicle.X<service.X&&service.X<action.X))continue;return new AgendaColumns{Turn=turn.X-4,Advisor=advisor.X-4,Client=candidate.X-4,Vehicle=vehicle.X-4,Service=service.X-4,Action=action.X-4,Header=line.Where(w=>new[]{"TURNO","ASESOR","CLIENTE","VEHICULO","SERVICIOS","ACCION"}.Contains(LabelKey(w.Text))).Max(w=>w.Y)+7,Width=width};}return null;}
+ // Action headings and their button captions can be centered at different X
+ // coordinates. Use the leftmost action control to exclude the whole column,
+ // including unrecognized text beneath it, before assembling service lines.
+ double ActionBoundary(List<AgendaWord> words,double service,double heading){
+  var label=words.Where(w=>LabelKey(w.Text)=="ACCION"&&w.X>service).OrderBy(w=>w.Y).FirstOrDefault();
+  double limit=label==null?heading:Math.Min(heading,label.X-4);
+  double searchFrom=service+Math.Max(20,(limit-service)*.45);
+  foreach(var word in words.Where(w=>w.X>=searchFrom)){
+   string key=LabelKey(word.Text);
+   bool control=key=="AVISAR"||key=="REPROGRAMAR"||key=="CANCELAR"||key=="EDITAR"||
+    key.StartsWith("AVISARAUTOLISTO")||key.StartsWith("REPROGRAMARTURNO")||
+    key.StartsWith("CANCELARTURNO")||key.StartsWith("EDITARTURNO")||
+    key.StartsWith("VERPREORDEN")||key.StartsWith("CAMBIARADISPONIBLE");
+   if(key=="VER")control=words.Any(w=>Math.Abs(w.Y-word.Y)<20&&w.X>=word.X-2&&w.X<word.X+75&&LabelKey(w.Text).StartsWith("PREORDEN"));
+   if(key=="CAMBIAR")control=words.Any(w=>Math.Abs(w.Y-word.Y)<20&&Math.Abs(w.X-word.X)<90&&LabelKey(w.Text)=="DISPONIBLE");
+   if(control)limit=Math.Min(limit,word.X-2);
+  }
+  return limit;
+ }
+
+ AgendaColumns HeaderColumns(List<AgendaWord> words,double width){foreach(var candidate in words.Where(w=>LabelKey(w.Text)=="CLIENTE").OrderBy(w=>w.Y)){var line=words.Where(w=>Math.Abs(w.Y-candidate.Y)<6).OrderBy(w=>w.X).ToList();Func<string,AgendaWord> label=key=>line.FirstOrDefault(w=>LabelKey(w.Text)==key);var turn=label("TURNO");var advisor=label("ASESOR");var vehicle=label("VEHICULO");var service=label("SERVICIOS");var action=label("ACCION");if(turn==null||advisor==null||vehicle==null||service==null||action==null)continue;if(!(turn.X<advisor.X&&advisor.X<candidate.X&&candidate.X<vehicle.X&&vehicle.X<service.X&&service.X<action.X))continue;return new AgendaColumns{Turn=turn.X-4,Advisor=advisor.X-4,Client=candidate.X-4,Vehicle=vehicle.X-4,Service=service.X-4,Action=ActionBoundary(words,service.X-4,action.X-4),Header=line.Where(w=>new[]{"TURNO","ASESOR","CLIENTE","VEHICULO","SERVICIOS","ACCION"}.Contains(LabelKey(w.Text))).Max(w=>w.Y)+7,Width=width};}return null;}
  void AddRowWords(AgendaRow row,IEnumerable<AgendaWord> words,AgendaColumns c){foreach(var w in words){if(w.X>=c.Client&&w.X<c.Vehicle)row.Client.Add(w);else if(w.X>=c.Vehicle&&w.X<c.Service)row.Vehicle.Add(w);else if(w.X>=c.Service&&w.X<c.Action)row.Service.Add(w);}}
  List<Appointment> ExtractAdaptive(string path){var rows=new List<AgendaRow>();string date="";AgendaColumns previous=null;double offset=0;using(PdfDocument doc=PdfDocument.Open(path)){int pageNo=0;foreach(Page page in doc.GetPages()){pageNo++;var words=page.GetWords().Select(w=>new AgendaWord{Text=w.Text,X=w.BoundingBox.Left,Y=page.Height-w.BoundingBox.Top}).ToList();if(pageNo==1)date=FindDate(words);var columns=HeaderColumns(words,page.Width);if(columns==null){if(previous==null)throw new Exception("No se detectaron las columnas Turno, Asesor, Cliente, Vehículo, Servicios y Acción en la página "+pageNo+".");double scale=page.Width/previous.Width;columns=new AgendaColumns{Turn=previous.Turn*scale,Advisor=previous.Advisor*scale,Client=previous.Client*scale,Vehicle=previous.Vehicle*scale,Service=previous.Service*scale,Action=previous.Action*scale,Header=0,Width=page.Width};}previous=columns;double bottom=page.Height-12;var footer=words.Where(w=>w.Y>page.Height*.85&&LabelKey(w.Text)=="CAPACIDAD").OrderBy(w=>w.Y).FirstOrDefault();if(footer!=null)bottom=Math.Min(bottom,footer.Y-9);var body=words.Where(w=>w.Y>=columns.Header&&w.Y<bottom).ToList();var times=body.Where(w=>w.X>=columns.Turn&&w.X<columns.Advisor&&Regex.IsMatch(w.Text,@"^\d{1,2}:\d{2}$")).OrderBy(w=>w.Y).ToList();if(rows.Count>0){double first=times.Count>0?times[0].Y-6:bottom;var leading=body.Where(w=>w.Y<first).Select(w=>new AgendaWord{Text=w.Text,X=w.X,Y=w.Y+offset});AddRowWords(rows[rows.Count-1],leading,columns);}for(int i=0;i<times.Count;i++){double start=times[i].Y-6,end=i+1<times.Count?times[i+1].Y-6:bottom;var row=new AgendaRow{Time=times[i].Text};AddRowWords(row,body.Where(w=>w.Y>=start&&w.Y<end).Select(w=>new AgendaWord{Text=w.Text,X=w.X,Y=w.Y+offset}),columns);rows.Add(row);}offset+=page.Height;}}
  var result=new List<Appointment>();foreach(var row in rows){var appointment=ParseAgendaRow(row,date);if(appointment!=null)result.Add(appointment);}return result;}
@@ -71,13 +91,13 @@ public class TurneroPage:UserControl {
   return result;
  }
  List<Appointment> ExtractByVehicle(string path){
-  var all=new List<AgendaWord>();var actionLimits=new Dictionary<AgendaWord,double>();double offset=0;string date="";
+  var all=new List<AgendaWord>();var actionLimits=new Dictionary<AgendaWord,double>();double offset=0,previousAction=520;string date="";
   using(PdfDocument doc=PdfDocument.Open(path)){int number=0;foreach(Page page in doc.GetPages()){
    number++;double scale=page.Width/595d;
    var words=page.GetWords().Select(w=>new AgendaWord{Text=w.Text,X=w.BoundingBox.Left/scale,Y=(page.Height-w.BoundingBox.Top)/scale}).ToList();
    if(number==1)date=FindDate(words);
    var columns=HeaderColumns(words,595);
-   double action=columns!=null&&columns.Action>400?columns.Action:520;
+   double action=ActionBoundary(words,395,columns!=null&&columns.Action>400?columns.Action:previousAction);previousAction=action;
    foreach(var word in words){word.Y+=offset;all.Add(word);if(IsBrand(word))actionLimits[word]=action;}
    offset+=page.Height/scale;
   }}
