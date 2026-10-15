@@ -1,39 +1,92 @@
-name: Publicar actualizacion
-
+name: Validar y publicar App taller
 on:
   push:
-    branches:
-      - main
-
+    branches: [main]
+  workflow_dispatch:
 permissions:
-  contents: write
-
+  contents: read
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
+    permissions:
+      contents: write
     steps:
-      - name: Descargar codigo
-        uses: actions/checkout@v4
-
-      - name: Crear paquete sin bases internas
-        shell: bash
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Auditar ausencia de bases internas
+        shell: pwsh
         run: |
-          test ! -f Buscador_VIN_Instalable/clientes.dat
-          test ! -f Buscador_VIN_Instalable/vehiculos.dat
-          cat binary-parts/UglyToad.PdfPig.Fonts.dll.* > Buscador_VIN_Instalable/lib/UglyToad.PdfPig.Fonts.dll
-          cat binary-parts/UglyToad.PdfPig.dll.* > Buscador_VIN_Instalable/lib/UglyToad.PdfPig.dll
-          test "$(git hash-object Buscador_VIN_Instalable/lib/UglyToad.PdfPig.Fonts.dll)" = "2e1b9817fdef5820a9c5e59d09ee8ec0cc2c079d"
-          test "$(git hash-object Buscador_VIN_Instalable/lib/UglyToad.PdfPig.dll)" = "3c6a850a2bab06cc534ea7ba168b59b895243254"
-          VERSION=$(sed -n 's/.*AppVersion="\([0-9.]*\)".*/\1/p' Buscador_VIN_Instalable/BuscadorVIN.cs | head -n 1)
-          test -n "$VERSION"
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          zip -r Buscador_Autosur_Actualizacion.zip Buscador_VIN_Instalable
-
-      - name: Crear GitHub Release
-        uses: softprops/action-gh-release@v2
+          $tracked = @(git ls-files | Where-Object { $_ -match '(?i)\.dat$' })
+          $historical = @(git rev-list --objects --all | Where-Object { $_ -match '(?i)\.dat$' })
+          if ($tracked.Count -gt 0 -or $historical.Count -gt 0) { throw 'No publicar bases DAT' }
+      - name: Reconstruir dependencias y compilar
+        shell: pwsh
+        run: |
+          $root = Join-Path $PWD 'Buscador_VIN_Instalable'
+          foreach ($name in @('UglyToad.PdfPig.Fonts.dll','UglyToad.PdfPig.dll')) {
+            $out = [IO.File]::Create((Join-Path $root "lib/$name"))
+            try { Get-ChildItem "binary-parts/$name.*" | Sort-Object Name | ForEach-Object { $bytes = [IO.File]::ReadAllBytes($_.FullName); $out.Write($bytes,0,$bytes.Length) } } finally { $out.Dispose() }
+          }
+          if ((git hash-object "$root/lib/UglyToad.PdfPig.Fonts.dll") -ne '2e1b9817fdef5820a9c5e59d09ee8ec0cc2c079d') { throw 'Fonts DLL inválida' }
+          if ((git hash-object "$root/lib/UglyToad.PdfPig.dll") -ne '3c6a850a2bab06cc534ea7ba168b59b895243254') { throw 'PdfPig DLL inválida' }
+          $compiler = "$env:WINDIR/Microsoft.NET/Framework64/v4.0.30319/csc.exe"
+          $refs = @('System.dll','System.Core.dll','System.Drawing.dll','System.Windows.Forms.dll') + @(Get-ChildItem "$root/lib/*.dll" | ForEach-Object FullName)
+          $argsRef = $refs | ForEach-Object { '/reference:' + $_ }
+          & $compiler /nologo /target:winexe "/out:$root\Buscador Autosur.exe" @argsRef "$root\BuscadorVIN.cs" "$root\Turnero.cs"
+          if ($LASTEXITCODE -ne 0) { throw 'Falló compilación de App taller' }
+          & $compiler /nologo /main:TurneroTests /out:TurneroTests.exe @argsRef "$root\BuscadorVIN.cs" "$root\Turnero.cs" tests\TurneroTests.cs
+          if ($LASTEXITCODE -ne 0) { throw 'Falló compilación de pruebas' }
+          Get-ChildItem "$root/lib/*.dll" | Copy-Item -Destination .
+          ./TurneroTests.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Fallaron pruebas del turnero' }
+          $version = [regex]::Match((Get-Content -Raw "$root\BuscadorVIN.cs"), 'AppVersion="([0-9.]+)"').Groups[1].Value
+          if (!$version) { throw 'Falta versión' }
+          "VERSION=$version" >> $env:GITHUB_ENV
+      - name: Verificar compilación del instalador en Windows PowerShell
+        shell: powershell
+        run: |
+          $root = Join-Path $PWD 'Buscador_VIN_Instalable'
+          $code = (Get-Content -Raw -Encoding UTF8 "$root/BuscadorVIN.cs") + [Environment]::NewLine + (Get-Content -Raw -Encoding UTF8 "$root/Turnero.cs")
+          $refs = @("System.Windows.Forms", "System.Drawing", "System.Core") + @(Get-ChildItem "$root/lib/*.dll" | ForEach-Object FullName)
+          Add-Type -TypeDefinition $code -Language CSharp -ReferencedAssemblies $refs -OutputAssembly (Join-Path $PWD 'InstallerCompile.exe') -OutputType WindowsApplication -ErrorAction Stop
+          if (!(Test-Path 'InstallerCompile.exe')) { throw 'No compila como el instalador' }
+          Write-Output 'OK compilación Add-Type del instalador'
+      - name: Crear paquete sin DAT
+        shell: pwsh
+        run: |
+          if (@(Get-ChildItem Buscador_VIN_Instalable -Recurse -File -Filter '*.dat').Count -gt 0) { throw 'No publicar DAT' }
+          Compress-Archive Buscador_VIN_Instalable Buscador_Autosur_Actualizacion.zip
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [IO.Compression.ZipFile]::OpenRead((Join-Path $PWD 'Buscador_Autosur_Actualizacion.zip'))
+          try { if (@($zip.Entries | Where-Object { $_.FullName -match '(?i)\.dat$' }).Count -gt 0) { throw 'DAT detectado en ZIP' } } finally { $zip.Dispose() }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: App-taller-validada
+          path: |
+            Buscador_Autosur_Actualizacion.zip
+            turnero-pantalla.png
+            turnero-impresion.png
+            turnero-vista-previa.png
+      - uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.VERSION }}
-          name: Buscador Autosur v${{ env.VERSION }}
+          name: Buscador Autosur — App taller v${{ env.VERSION }}
           make_latest: true
-          files: Buscador_Autosur_Actualizacion.zip
+          files: |
+            Buscador_Autosur_Actualizacion.zip
+            turnero-pantalla.png
+            turnero-impresion.png
+            turnero-vista-previa.png
+          body: |
+            App taller 1.2.9: incorpora las mejoras del turnero de App repuestos 1.3.7.
+            - Navegación con barras y teclado, con fecha y hora fijas.
+            - Vista previa independiente con Cerrar, Esc, páginas y zoom.
+            - Alto de turno ajustable entre 28 y 60 mm; inicial 32 mm.
+            - Lectura de PDF por columnas y recuperación compatible por vehículo cuando se omiten horarios.
+            - Conserva el filtrado Renault, la búsqueda local de motor y las funciones originales.
+            - Conserva las bases locales y actualiza desde el repositorio de App taller.
+            Probado en Windows con PDF sintético y compilación del instalador.
+            La comprobación final con el PDF privado del usuario sigue pendiente.
+            Sin DAT ni datos de clientes en el paquete público.
           generate_release_notes: true
